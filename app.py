@@ -63,6 +63,8 @@ def redefine_status(r):
     else: # Papers without Manuscript status are still in process
         return 'Still in process'
 
+st.title('IEEE TNSM Stats')
+
 if REPORT_FILE is not None:
     report_df = pd.read_excel(REPORT_FILE)
     # test if the required columns are present in the provide report
@@ -70,7 +72,8 @@ if REPORT_FILE is not None:
 
     report_df = report_df[report_df['Manuscript ID - Original'] != 'draft']
     report_df = report_df[report_df['Manuscript ID - Latest'] != 'draft']
-    st.dataframe(report_df.head(5), 1000, 800)
+    st.header('Data Preview')
+    st.dataframe(report_df.head(5))
     
     report_df['First Decision Month Number'] = pd.DatetimeIndex(report_df['First Decision Date']).month
     report_df['First Decision Year'] = pd.DatetimeIndex(report_df['First Decision Date']).year
@@ -83,51 +86,65 @@ if REPORT_FILE is not None:
     status_count_df = report_df.groupby(['Current Status Category', 'Submission Year']).size().unstack(fill_value=0)
     status_count_df.loc["Submitted"] = status_count_df.sum()
     status_count_df.loc["Acceptance rate"] = (status_count_df.loc['Accept'] / status_count_df.loc['Submitted']) * 100
-    st.dataframe(status_count_df.round(2))
+    st.header('Paper status at a glance')
+    st.table(status_count_df.round(2))
 
-    subms_region_df = report_df.groupby(['Region', 'Submission Year']).size().unstack(fill_value=0)
-    subms_region_df = ((subms_region_df / subms_region_df.sum())*100)
-    st.dataframe(subms_region_df.round(2))
+    accept_subms_df = pd.pivot_table(report_df[report_df['Accept or Reject Final Decision'] == 'Accept'], values='Manuscript ID - Original', index=['Latest Decision Year'], columns=['Submission Year'], aggfunc='count', margins=True).fillna('')
+    st.header('Accepted papers')
+    st.write('Year of submission (columns) vs. Year of acceptance (Rows)')
+    st.table(accept_subms_df)
 
-    accept_region_df = report_df[report_df['Accept or Reject Final Decision'] == 'Accept'].groupby(['Region', 'Latest Decision Year']).size().unstack(fill_value=0)
-    accept_region_df = ((accept_region_df / accept_region_df.sum())*100)
-    st.dataframe(accept_region_df.round(2))
+    last_two_year_df = report_df[report_df['Submission Year'].max() - report_df['Submission Year'] < 3].copy()
+    last_two_year_df['Manuscript Status'] = last_two_year_df.apply(redefine_status, axis=1)
+    last_two_year_stats_df = last_two_year_df.groupby(['Manuscript Status', 'Submission Year']).size().unstack(fill_value=0)
+    last_two_year_stats_df.loc['Total processed (%)'] = (((last_two_year_stats_df.sum() - last_two_year_stats_df.loc['Still in process'])/last_two_year_stats_df.sum()) * 100).round(2)
+    st.header('Detailed accept/reject number')
+    st.write('Stats for the last 3 years')
+    st.table(last_two_year_stats_df)
 
-    # Longest First Review
-    days_original_decision_max_idx = [idx[1] for idx in report_df.loc[report_df['Revised'] == False, :].groupby(['Submission Year'])['# Days Between Original Submission & Original Decision'].nlargest(1).index]
-    max_original_decision_df = report_df[['Submission Year', '# Days Between Original Submission & Original Decision', 'Manuscript ID - Latest']].loc[days_original_decision_max_idx].set_index('Submission Year')
-    st.dataframe(max_original_decision_df)
-
-    # Longest Second+ Review
-    days_second_review_max_idx = [idx[1] for idx in report_df.loc[report_df['Revised'] == True, :].groupby(['Submission Year'])['# Days Between Original Submission & Original Decision'].nlargest(1).index]
-    max_second_review_df = report_df[['Submission Year', '# Days Between Original Submission & Original Decision', 'Manuscript ID - Latest']].loc[days_second_review_max_idx].set_index('Submission Year')
-    st.dataframe(max_second_review_df)
-
-    # Longest Overall Review (from submission to final decision)
-    days_final_decision_max_idx = [idx[1] for idx in report_df.groupby(['Submission Year'])['# Days Between Original Submission & Final Decision'].nlargest(1).index]
-    max_final_decision_df = report_df[['Submission Year', '# Days Between Original Submission & Final Decision', 'Manuscript ID - Latest']].loc[days_final_decision_max_idx].set_index('Submission Year')
-    st.dataframe(max_final_decision_df)
-
+    st.header('Distribution of the number of days from first submission to first decision')
     fig0, ax0 = plt.subplots(figsize=(8,6))
-    sns.ecdfplot(data=report_df[datetime.now().year - report_df['Submission Year'] < 5], x="# Days Between Original Submission & Original Decision", hue="Submission Year", ax=ax0)
+    sns.ecdfplot(data=report_df[report_df['Submission Year'].max() - report_df['Submission Year'] < 5], x="# Days Between Original Submission & Original Decision", hue="Submission Year", ax=ax0)
     ax0.set_title('CDF: # Days Between Original Submission & Original Decision')
     ax0.set_ylabel('CDF')
     st.pyplot(fig0)
 
+    st.header('Distribution of the number of days from first submission to final decision')
     fig1, ax1 = plt.subplots(figsize=(8,6))
-    sns.ecdfplot(data=report_df[datetime.now().year - report_df['Submission Year'] < 5], x="# Days Between Original Submission & Final Decision", hue="Submission Year", ax=ax1)
+    sns.ecdfplot(data=report_df[report_df['Submission Year'].max() - report_df['Submission Year'] < 5], x="# Days Between Original Submission & Final Decision", hue="Submission Year", ax=ax1)
     ax1.set_title('CDF: # Days Between Original Submission & Final Decision')
     ax1.set_ylabel('CDF')
     st.pyplot(fig1)
+    
+    st.header('Geographical distribution of submissions')
+    subms_region_df = report_df.groupby(['Region', 'Submission Year']).size().unstack(fill_value=0)
+    subms_region_df = ((subms_region_df / subms_region_df.sum())*100)
+    st.table(subms_region_df.round(2))
 
-    accept_subms_df = pd.pivot_table(report_df[report_df['Accept or Reject Final Decision'] == 'Accept'], values='Manuscript ID - Original', index=['Latest Decision Year'], columns=['Submission Year'], aggfunc='count', margins=True).fillna('')
-    st.dataframe(accept_subms_df)
+    st.header('Geographical distribution of publications')
+    accept_region_df = report_df[report_df['Accept or Reject Final Decision'] == 'Accept'].groupby(['Region', 'Latest Decision Year']).size().unstack(fill_value=0)
+    accept_region_df = ((accept_region_df / accept_region_df.sum())*100)
+    st.table(accept_region_df.round(2))
 
-    last_two_year_df = report_df[datetime.now().year - report_df['Submission Year'] < 3].copy()
-    last_two_year_df['Manuscript Status'] = last_two_year_df.apply(redefine_status, axis=1)
-    last_two_year_stats_df = last_two_year_df.groupby(['Manuscript Status', 'Submission Year']).size().unstack(fill_value=0)
-    last_two_year_stats_df.loc['Total processed (%)'] = (((last_two_year_stats_df.sum() - last_two_year_stats_df.loc['Still in process'])/last_two_year_stats_df.sum()) * 100).round(2)
-    st.dataframe(last_two_year_stats_df)
+    st.header('Longest first review round')
+    # Longest First Review
+    days_original_decision_max_idx = [idx[1] for idx in report_df.loc[report_df['Revised'] == False, :].groupby(['Submission Year'])['# Days Between Original Submission & Original Decision'].nlargest(1).index]
+    max_original_decision_df = report_df[['Submission Year', '# Days Between Original Submission & Original Decision', 'Manuscript ID - Latest']].loc[days_original_decision_max_idx].set_index('Submission Year')
+    st.table(max_original_decision_df)
+
+    st.header('Longest second+ review round')
+    # Longest Second+ Review
+    days_second_review_max_idx = [idx[1] for idx in report_df.loc[report_df['Revised'] == True, :].groupby(['Submission Year'])['# Days Between Original Submission & Original Decision'].nlargest(1).index]
+    max_second_review_df = report_df[['Submission Year', '# Days Between Original Submission & Original Decision', 'Manuscript ID - Latest']].loc[days_second_review_max_idx].set_index('Submission Year')
+    st.table(max_second_review_df)
+    
+    st.header('Longest review round overall (from submission to final decision)')
+    # Longest Overall Review (from submission to final decision)
+    days_final_decision_max_idx = [idx[1] for idx in report_df.groupby(['Submission Year'])['# Days Between Original Submission & Final Decision'].nlargest(1).index]
+    max_final_decision_df = report_df[['Submission Year', '# Days Between Original Submission & Final Decision', 'Manuscript ID - Latest']].loc[days_final_decision_max_idx].set_index('Submission Year')
+    st.table(max_final_decision_df)
+else:
+    st.markdown('No info available yet (*Use the file upload input in the sidebar*)')
 
 
 
