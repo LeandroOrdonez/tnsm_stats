@@ -1,11 +1,10 @@
-from io import StringIO
 import streamlit as st
 import numpy as np
 import pandas as pd
 import json
 from matplotlib import pyplot as plt
 import seaborn as sns
-from datetime import datetime
+import datetime
 
 IEEE_REG_PATH = './regions.json'
 FIELDS_PATH = './fields.json'
@@ -45,7 +44,7 @@ def filter_submitted_per_year(year, count_type='total'): # count_type: ['origina
         return report_df[(report_df['Submission Year'] == year) & (report_df['Revised'] == True)].copy()
 
 def filter_submitted_per_date_range(from_date, to_date):
-    return report_df[(report_df['Original Submission Date'] >= from_date) & (report_df['Original Submission Date'] < to_date)].copy() 
+    return report_df[(report_df['Original Submission Date'] >= from_date) & (report_df['Original Submission Date'] <= to_date)].copy() 
 
 
 def count_submitted_per_year(year, count_type='total'):
@@ -89,6 +88,21 @@ if REPORT_FILE is not None:
     st.header('Paper status at a glance')
     st.table(status_count_df.round(2))
 
+    ytd_report_df = filter_submitted_per_year(report_df['Submission Year'].max())
+    latest_submission_date = ytd_report_df['Original Submission Date'].max()
+    ytd_submissions = count_submitted_per_date_range(datetime.datetime(year=latest_submission_date.year, month=1, day=1), latest_submission_date)
+    mtd_submissions = count_submitted_per_date_range(datetime.datetime(year=latest_submission_date.year, month=latest_submission_date.month, day=1), latest_submission_date)
+    priot_year_submissions = count_submitted_per_date_range(latest_submission_date - datetime.timedelta(days=365), latest_submission_date)
+
+    num_submissions_df = pd.DataFrame({
+        "YTD": [ytd_submissions],
+        "MTD": [mtd_submissions],
+        "Prior 12 Months": [priot_year_submissions],
+        "Monthly Average": [priot_year_submissions / 12]
+    })
+    st.header(f'Number of submissions (Up to {latest_submission_date.strftime("%Y-%m-%d")})')
+    st.table(num_submissions_df.round(2))
+
     accept_subms_df = pd.pivot_table(report_df[report_df['Accept or Reject Final Decision'] == 'Accept'], values='Manuscript ID - Original', index=['Latest Decision Year'], columns=['Submission Year'], aggfunc='count', margins=True).fillna('')
     st.header('Accepted papers')
     st.write('Year of submission (columns) vs. Year of acceptance (Rows)')
@@ -115,6 +129,14 @@ if REPORT_FILE is not None:
     ax1.set_title('CDF: # Days Between Original Submission & Final Decision')
     ax1.set_ylabel('CDF')
     st.pyplot(fig1)
+
+    st.header('Number of days from 1st submission to 1st decision - Editors average')
+    fig2, ax2 = plt.subplots(figsize=(17,8))
+    avg_first_review_editors = ytd_report_df.groupby('Editor Names').mean()['# Days Between Original Submission & Original Decision'].reset_index(drop=True)
+    avg_first_review_editors.plot(kind='bar', ax=ax2)
+    ax2.axhline(y=avg_first_review_editors.mean(), color='r')
+    ax2.set_ylabel('Average number of days from first submission to first decision')
+    st.pyplot(fig2)
     
     st.header('Geographical distribution of submissions')
     subms_region_df = report_df.groupby(['Region', 'Submission Year']).size().unstack(fill_value=0)
