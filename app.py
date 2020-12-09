@@ -15,7 +15,7 @@ with open(FIELDS_PATH, 'r') as fields_file:
 with open(IEEE_REG_PATH, 'r') as reg_file:
     REGIONS = json.load(reg_file)
 
-REPORT_FILE = st.sidebar.file_uploader("Upload TNSM report")
+REPORT_FILE = st.sidebar.file_uploader("Upload TNSM report spreadsheet")
 
 country_region = {v: k for k, values in REGIONS.items() for v in values}
 
@@ -64,10 +64,16 @@ def redefine_status(r):
 
 st.title('IEEE TNSM Stats')
 
-if REPORT_FILE is not None:
+if REPORT_FILE is None:
+    st.markdown('No info available yet (*Use the file upload input in the sidebar*)')
+    formatted_cols = '\n'.join([f'* {col}' for col in COLUMNS])
+    st.text(f"""Be sure to include the following fields when exporting the report:
+
+{formatted_cols}""")
+else:
     report_df = pd.read_excel(REPORT_FILE)
     # test if the required columns are present in the provide report
-    assert set(report_df.columns) == set(COLUMNS)
+    assert  set(COLUMNS).issubset(set(report_df.columns))
 
     report_df = report_df[report_df['Manuscript ID - Original'] != 'draft']
     report_df = report_df[report_df['Manuscript ID - Latest'] != 'draft']
@@ -165,8 +171,6 @@ if REPORT_FILE is not None:
     days_final_decision_max_idx = [idx[1] for idx in report_df.groupby(['Submission Year'])['# Days Between Original Submission & Final Decision'].nlargest(1).index]
     max_final_decision_df = report_df[['Submission Year', '# Days Between Original Submission & Final Decision', 'Manuscript ID - Latest']].loc[days_final_decision_max_idx].set_index('Submission Year')
     st.table(max_final_decision_df)
-else:
-    st.markdown('No info available yet (*Use the file upload input in the sidebar*)')
 
 
 
