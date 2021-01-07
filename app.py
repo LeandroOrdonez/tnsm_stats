@@ -71,7 +71,7 @@ if REPORT_FILE is None:
 
 {formatted_cols}""")
 else:
-    report_df = pd.read_excel(REPORT_FILE)
+    report_df = pd.read_excel(REPORT_FILE, engine='openpyxl')
     # test if the required columns are present in the provide report
     assert  set(COLUMNS).issubset(set(report_df.columns))
 
